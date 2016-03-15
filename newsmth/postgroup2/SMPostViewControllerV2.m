@@ -13,7 +13,7 @@
 
 #import "SMPostViewControllerV2.h"
 #import "SMBoardViewController.h"
-#import "PBWebViewController.h"
+#import "XWebViewController.h"
 #import "XImageView.h"
 #import "XImageViewCache.h"
 #import "SMMainViewController.h"
@@ -76,6 +76,8 @@ typedef NS_ENUM(NSInteger, ScrollDirection) {
 @property (weak, nonatomic) IBOutlet UIButton *buttonForPageSelector;
 @property (weak, nonatomic) IBOutlet UIButton *buttonForGoTop;
 
+@property (strong, nonatomic) UIView *titleView;
+@property (strong, nonatomic) UILabel *titleLabel;
 @end
 
 @implementation SMPostViewControllerV2
@@ -93,7 +95,17 @@ typedef NS_ENUM(NSInteger, ScrollDirection) {
     if (self.author.length > 0) {
         title = [NSString stringWithFormat:@"%@ - 同作者 %@", title, self.author];
     }
-    self.title = title;
+    
+    UILabel *label = [[UILabel alloc] initWithFrame:CGRectZero];
+    label.textAlignment = NSTextAlignmentCenter;
+    label.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    label.text = title;
+    [label sizeToFit];
+    self.titleView = [[UIView alloc] initWithFrame:label.bounds];
+    [self.titleView addSubview:label];
+    self.titleLabel = label;
+    self.navigationItem.titleView = self.titleView;
+//    self.title = title;
     
     self.imageLoaders = [NSMutableDictionary new];
     
@@ -134,11 +146,21 @@ typedef NS_ENUM(NSInteger, ScrollDirection) {
     
     [self setupTheme];
     
+    [self.navigationController.interactivePopGestureRecognizer addTarget:self
+                                                                  action:@selector(handlePopGesture:)];
+    
+}
+
+- (void)handlePopGesture:(UIGestureRecognizer *)gesture
+{
+    if (gesture.state == UIGestureRecognizerStateBegan) {
+        [self showNavigation:NO];
+    }
 }
 
 - (void)onSwipeGesture:(UIGestureRecognizer *)gesture
 {
-    [self.navigationController popViewControllerAnimated:YES];
+//    [self.navigationController popViewControllerAnimated:YES];
 }
 
 - (BOOL)shouldHideNavigation
@@ -146,7 +168,137 @@ typedef NS_ENUM(NSInteger, ScrollDirection) {
     return self.webView.scrollView.contentOffset.y > SM_TOP_INSET;
 }
 
+- (NSArray *)barItemViews
+{
+    
+    NSMutableArray *views = [NSMutableArray new];
+    [self.navigationController.navigationBar.subviews enumerateObjectsUsingBlock:^(__kindof UIView * _Nonnull view, NSUInteger idx, BOOL * _Nonnull stop) {
+        if ([view isKindOfClass:NSClassFromString(@"UINavigationItemButtonView")]
+            || [view isKindOfClass:NSClassFromString(@"UINavigationButton")]
+            || [view isKindOfClass:NSClassFromString(@"_UINavigationBarBackIndicatorView")]
+            ) {
+            [views addObject:view];
+        }
+    }];
+//    if (self.navigationItem.backBarButtonItem) {
+//        [items addObject:self.navigationItem.backBarButtonItem];
+//    }
+//    
+//    [items addObjectsFromArray:self.navigationItem.leftBarButtonItems];
+//    [items addObjectsFromArray:self.navigationItem.rightBarButtonItems];
+    NSLog(@"%@", views);
+    return views;
+}
+
+- (void)setBarItemsHide:(BOOL)hide
+{
+//    if (hide) {
+//        [self.navigationController.navigationBar setXHeight:20];
+//    } else {
+//        [self.navigationController.navigationBar setXHeight:44];
+//    }
+    [self.barItemViews enumerateObjectsUsingBlock:^(UIView * _Nonnull view, NSUInteger idx, BOOL * _Nonnull stop) {
+        view.hidden = hide;
+//        if (hide) {
+//            view.transform = CGAffineTransformScale(CGAffineTransformIdentity, .5, .5);
+//            view.top += 20;
+//        } else {
+//            view.transform = CGAffineTransformIdentity;
+//            view.top -= 20;
+//        }
+    }];
+//    self.navigationItem.hidesBackButton = hide;
+}
+
+- (BOOL)scrollViewShouldScrollToTop:(UIScrollView *)scrollView
+{
+    if (self.hideTop) {
+        [self showNavigation:YES];
+        return NO;
+    } else {
+        return YES;
+    }
+}
+
+- (BOOL)useNewHideShow
+{
+    return [SMUtils systemVersion] >= 9;
+}
+
 - (void)hideNavigation:(BOOL)animated
+{
+    if ([self useNewHideShow]) {
+        [self hideNavigation_iOS9:animated];
+    } else {
+        [self hideNavigation_iOS6:animated];
+    }
+}
+
+- (void)showNavigation:(BOOL)animated
+{
+    if ([SMUtils systemVersion] >= 9) {
+        [self showNavigation_iOS9:animated];
+    } else {
+        [self showNavigation_iOS6:animated];
+    }
+}
+
+- (void)hideNavigation_iOS9:(BOOL)animated
+{
+    if (self.hideTop) return ;
+    self.hideTop = YES;
+    
+//    self.navigationItem.hidesBackButton = YES;
+    [self setBarItemsHide:YES];
+    
+    CGRect frame = self.navigationController.navigationBar.frame;
+    frame.size.height = 20;
+    self.navigationController.navigationBar.frame = frame;
+    
+    self.titleView.transform = CGAffineTransformScale(CGAffineTransformIdentity, 0.6, 0.6);
+    frame = self.titleLabel.frame;
+    frame.origin.y = 20;
+    self.titleLabel.frame = frame;
+    
+    // bottom
+    [UIView animateWithDuration:animated ? 0.5 : 0 animations:^{
+        CGRect frame = self.viewForButtomBar.frame;
+        frame.origin.y = self.view.frame.size.height;
+        self.viewForButtomBar.frame = frame;
+        
+        [self setWebViewContentInsetTop:40 bottom:0];
+    }];
+}
+
+
+- (void)showNavigation_iOS9:(BOOL)animated
+{
+    if (!self.hideTop) return ;
+    self.hideTop = NO;
+    
+//    self.navigationItem.hidesBackButton = NO;
+    [self setBarItemsHide:NO];
+ 
+    CGRect frame = self.navigationController.navigationBar.frame;
+    frame.size.height = 44;
+    self.navigationController.navigationBar.frame = frame;
+    
+    self.titleView.transform = CGAffineTransformIdentity;
+    frame = self.titleLabel.frame;
+    frame.origin.y = 0;
+    self.titleLabel.frame = frame;
+    
+    // bottom
+    [UIView animateWithDuration:animated ? 0.5 : 0 animations:^{
+        CGRect frame = self.viewForButtomBar.frame;
+        frame.origin.y = self.view.frame.size.height - self.viewForButtomBar.frame.size.height;
+        self.viewForButtomBar.frame = frame;
+        
+        [self setWebViewContentInsetTop:SM_TOP_INSET bottom:self.viewForButtomBar.frame.size.height];
+    }];
+}
+
+- (void)hideNavigation_iOS6:(BOOL)animated
 {
     if (self.hideTop) return ;
     self.hideTop = YES;
@@ -168,7 +320,7 @@ typedef NS_ENUM(NSInteger, ScrollDirection) {
     }];
 }
 
-- (void)showNavigation:(BOOL)animated
+- (void)showNavigation_iOS6:(BOOL)animated
 {
     if (!self.hideTop) return ;
     self.hideTop = NO;
@@ -190,7 +342,7 @@ typedef NS_ENUM(NSInteger, ScrollDirection) {
 
 - (BOOL)prefersStatusBarHidden 
 {
-    return self.hideTop;
+    return [self useNewHideShow] ? NO : self.hideTop;
 }
 
 - (void)viewWillAppear:(BOOL)animated
@@ -229,6 +381,7 @@ typedef NS_ENUM(NSInteger, ScrollDirection) {
         return ;
     }
     self.viewForButtomBar.backgroundColor = [SMTheme colorForBackground];
+    self.titleLabel.textColor = [SMTheme colorForPrimary];
     NSArray *buttons = @[self.buttonForBack, self.buttonForGoTop];
     for (UIButton *button in buttons) {
         UIImage *image = [button imageForState:UIControlStateNormal];
@@ -420,8 +573,8 @@ typedef NS_ENUM(NSInteger, ScrollDirection) {
     XLog_d(@"load: %@", url);
     
     if ([url.scheme isEqualToString:@"http"] || [url.scheme isEqualToString:@"https"]) {
-        PBWebViewController *vc = [[PBWebViewController alloc] init];
-        vc.URL = url;
+        XWebViewController *vc = [[XWebViewController alloc] init];
+        vc.url = url;
         [self.navigationController pushViewController:vc animated:YES];
         return NO;
     }

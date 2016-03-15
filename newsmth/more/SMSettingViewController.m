@@ -10,7 +10,7 @@
 #import "SMMailComposeViewController.h"
 #import "SMFontSelectorViewController.h"
 #import "XImageViewCache.h"
-#import "PBWebViewController.h"
+#import "XWebViewController.h"
 #import "SMDonateViewController.h"
 #import <MessageUI/MessageUI.h>
 #import "SMIPadSplitViewController.h"
@@ -46,6 +46,7 @@ typedef enum {
     CellTypeFeedback,
     CellTypeRate,
     CellTypeClearCache,
+    CellTypeClearPostCache,
     
     CellTypeThxPsyYiYi,
     CellTypeAbout,
@@ -74,6 +75,7 @@ typedef struct {
 }SectionData;
 
 static SectionData sections[] = {
+    /*
     {
         SectionTypeIAP,
         "支持开发者",
@@ -81,6 +83,7 @@ static SectionData sections[] = {
         4,
         {CellTypeDonate, CellTypeDisableTail, CellTypeDisableAd, CellTypeAbout}
     },
+     */
     {
         SectionTypeBackgroundFetch,
         "后台获取最新邮件、回复、AT",
@@ -134,15 +137,15 @@ static SectionData sections[] = {
         SectionTypeMore,
         "其他",
         NULL,
-        4,
-        {CellTypeEULA, CellTypeFeedback, CellTypeRate, CellTypeClearCache}
+        5,
+        {CellTypeEULA, CellTypeFeedback, CellTypeRate, CellTypeClearCache, CellTypeClearPostCache}
     },
     {
         SectionTypeThanks,
         "感谢",
         NULL,
-        1,
-        {CellTypeThxPsyYiYi /*, CellTypeAbout , CellTypeDonate */}
+        2,
+        {CellTypeThxPsyYiYi, CellTypeAbout /*, CellTypeDonate */}
     }
 };
 
@@ -164,6 +167,7 @@ static SectionData sections[] = {
 @property (strong, nonatomic) IBOutlet UITableViewCell *cellForPostFont;
 @property (strong, nonatomic) IBOutlet UITableViewCell *cellForListFont;
 @property (strong, nonatomic) IBOutlet UITableViewCell *cellForClearCache;
+@property (strong, nonatomic) IBOutlet UITableViewCell *cellForClearPostCache;
 @property (strong, nonatomic) IBOutlet UITableViewCell *cellForThxPsyYiYi;
 @property (strong, nonatomic) IBOutlet UITableViewCell *cellForBackgroundFetchHelp;
 @property (strong, nonatomic) IBOutlet UITableViewCell *cellForEnableDayMode;
@@ -201,6 +205,7 @@ static SectionData sections[] = {
 @property (weak, nonatomic) IBOutlet UISlider *sliderForListFont;
 
 @property (weak, nonatomic) IBOutlet UIActivityIndicatorView *activityIndicatorForClearCache;
+@property (weak, nonatomic) IBOutlet UIActivityIndicatorView *activityIndicatorForClearPostCache;
 
 @end
 
@@ -249,10 +254,10 @@ static SectionData sections[] = {
         _switchForBackgroundFetch.enabled = _switchForSwipeBack.enabled = _switchForBackgroundFetchSmartMode.enabled = NO;
     }
     
-    if ([SMConfig isPro]) {
-        _cellForDonate.textLabel.text = @"已升级为Pro版";
-    }
-    _switchForDisableTail.enabled = _switchForDisableAd.enabled = [SMConfig isPro];
+//    if ([SMConfig isPro]) {
+//        _cellForDonate.textLabel.text = @"已升级为Pro版";
+//    }
+//    _switchForDisableTail.enabled = _switchForDisableAd.enabled = [SMConfig isPro];
     
     __block unsigned long long cacheSize = 0;
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
@@ -264,7 +269,63 @@ static SectionData sections[] = {
         });
     });
     
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
+        __block unsigned long long postsSize = [self postCacheSize];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            _cellForClearPostCache.detailTextLabel.text = [SMUtils formatSize:postsSize];
+            _activityIndicatorForClearPostCache.hidden = YES;
+            [self.tableView reloadData];
+        });
+    });
+    
+    
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(onUpdateProNotification) name:NOTIFYCATION_IAP_PRO object:nil];
+}
+
+- (NSString *)postsPath
+{
+    return [[SMUtils documentPath] stringByAppendingString:@"/posts/"];
+}
+
+- (unsigned long long)postCacheSize
+{
+    NSArray *filesArray = [[NSFileManager defaultManager] subpathsOfDirectoryAtPath:self.postsPath error:nil];
+    NSEnumerator *filesEnumerator = [filesArray objectEnumerator];
+    NSString *fileName;
+    unsigned long long fileSize = 0;
+    
+    while (fileName = [filesEnumerator nextObject]) {
+        NSError *error;
+        NSString *fullPath = [self.postsPath stringByAppendingPathComponent:fileName];
+        NSDictionary *fileDictionary = [[NSFileManager defaultManager] attributesOfItemAtPath:fullPath error:&error];
+        if (!error) {
+            fileSize += [fileDictionary fileSize];
+        } else {
+            XLog_e(@"attribute file error: %@, %@", fullPath, error);
+        }
+    }
+    
+    return fileSize;
+}
+
+- (void)clearPostCache
+{
+    NSFileManager *fileMgr = [[NSFileManager alloc] init];
+    NSError *error = nil;
+    NSArray *directoryContents = [fileMgr contentsOfDirectoryAtPath:self.postsPath error:&error];
+    if (error == nil) {
+        for (NSString *path in directoryContents) {
+            NSString *fullPath = [self.postsPath stringByAppendingPathComponent:path];
+            BOOL removeSuccess = [fileMgr removeItemAtPath:fullPath error:&error];
+            if (!removeSuccess) {
+                XLog_e(@"remove file fail: %@", fullPath);
+            } else {
+                XLog_d(@"remove file success: %@", fullPath);
+            }
+        }
+    } else {
+        XLog_e(@"%@", error);
+    }
 }
 
 - (void)setupTheme
@@ -458,6 +519,8 @@ static SectionData sections[] = {
             return _cellForRate;
         case CellTypeClearCache:
             return _cellForClearCache;
+        case CellTypeClearPostCache:
+            return _cellForClearPostCache;
             
         case CellTypeThxPsyYiYi:
             return _cellForThxPsyYiYi;
@@ -577,8 +640,8 @@ static SectionData sections[] = {
     }
     
     if (cellType == CellTypeThxPsyYiYi) {
-        PBWebViewController *vc = [[PBWebViewController alloc] init];
-        vc.URL = [NSURL URLWithString:@"http://maxwin.me/xsmth/PsyYiYi.html"];
+        XWebViewController *vc = [[XWebViewController alloc] init];
+        vc.url = [NSURL URLWithString:@"http://maxwin.me/xsmth/PsyYiYi.html"];
         
         if ([SMConfig iPadMode]) {
             [SMIPadSplitViewController instance].detailViewController = vc;
@@ -596,8 +659,8 @@ static SectionData sections[] = {
     }
     
     if (cellType == CellTypeAbout) {
-        PBWebViewController *vc = [[PBWebViewController alloc] init];
-        vc.URL = [NSURL URLWithString:@"http://maxwin.me/xsmth/about.html"];
+        XWebViewController *vc = [[XWebViewController alloc] init];
+        vc.url = [NSURL URLWithString:@"http://maxwin.me/xsmth/about.html"];
         if ([SMConfig iPadMode]) {
             [SMIPadSplitViewController instance].detailViewController = vc;
         } else {
@@ -607,8 +670,8 @@ static SectionData sections[] = {
     }
 
     if (cellType == CellTypeBackgroundFetchHelp) {
-        PBWebViewController *vc = [[PBWebViewController alloc] init];
-        vc.URL = [NSURL URLWithString:@"http://maxwin.me/xsmth/background_fetch_help.html"];
+        XWebViewController *vc = [[XWebViewController alloc] init];
+        vc.url = [NSURL URLWithString:@"http://maxwin.me/xsmth/background_fetch_help.html"];
         if ([SMConfig iPadMode]) {
             [SMIPadSplitViewController instance].detailViewController = vc;
         } else {
@@ -629,6 +692,20 @@ static SectionData sections[] = {
         });
         action = @"clearImageCache";
     }
+    
+    if (cellType == CellTypeClearPostCache) {
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
+            _activityIndicatorForClearPostCache.hidden = YES;
+            _cellForClearPostCache.detailTextLabel.text = @"";
+            [self clearPostCache];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                _cellForClearPostCache.detailTextLabel.text = @"0";
+                _activityIndicatorForClearPostCache.hidden = YES;
+            });
+        });
+        action = @"clearPostsCache";
+    }
+    
     [SMUtils trackEventWithCategory:@"setting" action:action label:nil];
 }
 

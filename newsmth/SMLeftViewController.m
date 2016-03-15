@@ -13,7 +13,7 @@
 #import "SMAccountManager.h"
 #import "SMUserViewController.h"
 #import "SMSectionViewController.h"
-#import "PBWebViewController.h"
+#import "XWebViewController.h"
 #import "SMNoticeViewController.h"
 #import "SMSettingViewController.h"
 
@@ -147,8 +147,12 @@ typedef NS_ENUM(NSInteger, CellType) {
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
 {
     UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:nil];
+    UIView *selectedBackgroundView = [[UIView alloc] initWithFrame:cell.contentView.bounds];
+    selectedBackgroundView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    cell.selectedBackgroundView = selectedBackgroundView;
     cell.backgroundColor = [SMTheme colorForBackground];
     cell.textLabel.textColor = [SMTheme colorForPrimary];
+    cell.selectedBackgroundView.backgroundColor = [SMTheme colorForHighlightBackground];
     
     UIImageView *seperator = [[UIImageView alloc] init];
     CGRect frame = cell.contentView.bounds;
@@ -186,9 +190,9 @@ typedef NS_ENUM(NSInteger, CellType) {
         text = @"分区";
     } else if (cellType == CellTypeSetting) {
         text = @"设置";
-        if (![SMConfig isPro]) {
-            cell.detailTextLabel.text = @"升级到Pro版        :)";
-        }
+//        if (![SMConfig isPro]) {
+//            cell.detailTextLabel.text = @"升级到Pro版        :)";
+//        }
     }
     
     cell.textLabel.text = text;
